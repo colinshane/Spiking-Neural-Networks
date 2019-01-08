@@ -15,7 +15,7 @@ par = {
 	'training_method'		: 'SL',
 
 	# Cell configuration
-	'cell_type'				: 'lif',	# 'rate', 'lif', 'adex'
+	'cell_type'				: 'adex',	# 'rate', 'lif', 'adex'
 	'exc_model'				: 'RS',
 	'inh_model'				: 'cNA',
 	'current_divider'		: 3e8,

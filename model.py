@@ -83,8 +83,8 @@ class Model:
 				raise Exception('Rate cell not yet implemented.')
 			elif par['cell_type'] == 'adex':
 				spike, state, adapt, syn_x, syn_u = self.AdEx_cell(self.h_out[-1], self.h[-1], adapt, self.input_data[t], syn_x, syn_u)
-				y = 0.5*y + 0.5*(spike @ self.var_dict['W_out'] + 0.*self.var_dict['b_out'])
-				
+				y = 0.98*y + 0.02*(spike @ self.var_dict['W_out'] + 0.*self.var_dict['b_out'])
+
 				self.h_out.append(spike)
 				self.h.append(state)
 				self.output.append(y)
@@ -96,7 +96,7 @@ class Model:
 				self.h_out.append(spike)
 				self.h.append(state)
 				self.output.append(y)
-				
+
 		# Stack records
 		self.output = tf.stack(self.output, axis=0)
 		self.h = tf.stack(self.h, axis=0)
@@ -135,7 +135,7 @@ class Model:
 		# Check potential threshold for new spikes
 		@tf.custom_gradient
 		def do_spike(V):
-			def grad(dy): return 0.999*tf.nn.relu(1-tf.abs((V-c['Vth'])/(0.04 + c['Vth'])))
+			def grad(dy): return -0.3*tf.nn.relu(1-tf.abs((V-c['Vth'])/(0.02 + c['Vth'])))
 			return tf.cast(V >= c['Vth'], tf.float32), grad
 
 		spike = do_spike(tf.minimum(c['Vth']+1e-9, V_next))
@@ -169,7 +169,7 @@ class Model:
 		# Apply synaptic plasticity
 		spike_post, syn_x, syn_u = self.synaptic_plasticity(spike, syn_x, syn_u)
 
-		I = rnn_input @ self.var_dict['W_in'] + spike_post @ self.W_rnn_effective + self.var_dict['b_rnn']
+		I = rnn_input @ self.var_dict['W_in'] + spike_post @ self.W_rnn_effective + 0*self.var_dict['b_rnn']
 		V, w, spike = self.run_lif(V, w, I)
 
 		return spike, V, w, syn_x, syn_u
