@@ -265,4 +265,4 @@ if __name__ == '__main__':
 		else:
 			main()
 	except KeyboardInterrupt:
-		print('Quit by KeyboardInterrupt.')		print('Quit by KeyboardInterrupt.')
+		quit('Quit by KeyboardInterrupt.')
