@@ -18,13 +18,13 @@ par = {
 	'cell_type'				: 'adex',	# 'rate' or 'adex'
 	'exc_model'				: 'RS',
 	'inh_model'				: 'cNA',
-	'current_divider'		: 2e6,
+	'current_divider'		: 3e8,
 	'input_frequency'		: 30,		# Matches Hz with tuning_height of 4.0 and kappa of 2.0
 
 	# Network configuration
 	'use_stp'				: False,
 	'exc_inh_prop'			: 0.8,		# Literature 0.8, for EI off 1
-	
+
 	# Network shape
 	'num_motion_tuned'		: 64,
 	'num_fix_tuned'			: 4,
@@ -85,11 +85,11 @@ par = {
 def update_parameters(updates):
 	""" Updates parameters based on a provided
 		dictionary, then updates dependencies """
-	
+
 	for (key, val) in updates.items():
 		par[key] = val
 		print('Updating: {:<24} --> {}'.format(key, val))
-		
+
 	update_dependencies()
 
 
@@ -121,13 +121,18 @@ def update_dependencies():
 
 	# Set up weights and biases
 	c = 0.05
-	par['W_in_init'] = c*np.float32(np.random.gamma(shape=0.25, scale=1.0, size=[par['n_input'], par['n_hidden']]))
+	par['W_in_init'] = c*np.float32(np.random.gamma(shape=0.2, scale=1.0, size=[par['n_input'], par['n_hidden']]))
 	par['W_out_init'] = np.float32(np.random.uniform(-c, c, size=[par['n_hidden'], par['n_output']]))
 
 	if par['EI']:
-		par['W_rnn_init'] = c*np.float32(np.random.gamma(shape=0.25, scale=1.0, size=[par['n_hidden'], par['n_hidden']]))
+		par['W_rnn_init'] = c*np.float32(np.random.gamma(shape=0.1, scale=1.0, size=[par['n_hidden'], par['n_hidden']]))
+		par['W_rnn_init'][:, par['num_exc_units']:] = c*np.float32(np.random.gamma(shape=0.2, scale=1.0, size=[par['n_hidden'], par['n_hidden']-par['num_exc_units']]))
+		par['W_rnn_init'][par['num_exc_units']:, :] = c*np.float32(np.random.gamma(shape=0.2, scale=1.0, size=[par['n_hidden']-par['num_exc_units'], par['n_hidden']]))
 		par['W_rnn_mask'] = np.ones([par['n_hidden'], par['n_hidden']], dtype=np.float32) - np.eye(par['n_hidden'])
 		par['W_rnn_init'] *= par['W_rnn_mask']
+
+
+
 	else:
 		par['W_rnn_init'] = np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_hidden']]))
 		par['W_rnn_mask'] = np.ones((par['n_hidden'], par['n_hidden']), dtype=np.float32)
@@ -181,15 +186,15 @@ def update_dependencies():
 		# are in units of mA.  When pulling from a table based in volts/amps,
 		# multiply E, V_T, D, b, V_r, and Vth by 1000
 		par['cNA'] = {
-			'C'   : 59e-12,     'g'   : 2.9e-9,     'E'   : -62,
-			'V_T' : -42,        'D'   : 3,          'a'   : 1.8e-9,
-			'tau' : 16e-3,      'b'   : 61e-9,      'V_r' : -54,
-			'Vth' : 20,         'dt'  : par['dt']/1000 }
+			'C'   : 59e-12,     'g'   : 2.9e-9,     'E'   : -62e-3,
+			'V_T' : -42e-3,     'D'   : 3e-3,       'a'   : 1.8e-9,
+			'tau' : 16e-3,      'b'   : 61e-12,     'V_r' : -54e-3,
+			'Vth' : 0e-3,      'dt'  : par['dt']/1000 }
 		par['RS']  = {
-			'C'   : 104e-12,    'g'   : 4.3e-9,     'E'   : -65,
-			'V_T' : -52,        'D'   : 0.8,        'a'   : -0.8e-9,
-			'tau' : 88e-3,      'b'   : 65e-9,      'V_r' : -53,
-			'Vth' : 20,         'dt'  : par['dt']/1000 }
+			'C'   : 104e-12,    'g'   : 4.3e-9,     'E'   : -65e-3,
+			'V_T' : -52e-3,     'D'   : 0.8e-3,     'a'   : -0.8e-9,
+			'tau' : 88e-3,      'b'   : 65e-12,     'V_r' : -53e-3,
+			'Vth' : 0e-3,      'dt'  : par['dt']/1000 }
 
 		par['adex'] = {}
 		for (k0, v_exc), (k1, v_inh) in zip(par[par['exc_model']].items(), par[par['inh_model']].items()):
@@ -201,8 +206,7 @@ def update_dependencies():
 
 		par['w_init'] = par['adex']['b']
 		par['adex']['current_divider'] = par['current_divider']
-		
+
 
 update_dependencies()
 print('--> Parameters successfully loaded.\n')
-

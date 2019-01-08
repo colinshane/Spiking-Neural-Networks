@@ -126,10 +126,10 @@ class Model:
 		# Check potential threshold for new spikes
 		@tf.custom_gradient
 		def do_spike(V):
-			def grad(dy): return 0.3*tf.nn.relu(1-tf.abs((V-c['Vth'])/c['Vth']))
-			return tf.cast(V > c['Vth'], tf.float32), grad
+			def grad(dy): return 0.999*tf.nn.relu(1-tf.abs((V-c['Vth'])/(0.04 + c['Vth'])))
+			return tf.cast(V >= c['Vth'], tf.float32), grad
 
-		spike = do_spike(V_next)
+		spike = do_spike(tf.minimum(c['Vth'], V_next))
 
 		# Apply spike to membrane and adaptation
 		V_new = spike*c['V_r']        + (1-spike)*V_next
@@ -208,7 +208,7 @@ def main(gpu_id=None):
 			_, task_loss, output, state, spike = sess.run([model.train, model.task_loss, model.output, model.h, model.h_out], feed_dict=feed_dict)
 
 			# Display network performance
-			if i%100 == 0:
+			if i%20 == 0:
 				acc = get_perf(trial_info['desired_output'], output, trial_info['train_mask'])
 				print('Iter: {:>6} | Task: {:>6} | Accuracy: {:5.3f} | Task Loss: {:5.3f} | Spike Rate: {:6.2f} Hz'.format(\
 						i, par['task'], acc, task_loss, 1000*np.mean(spike)))
@@ -265,4 +265,4 @@ if __name__ == '__main__':
 		else:
 			main()
 	except KeyboardInterrupt:
-		print('Quit by KeyboardInterrupt.')
+		print('Quit by KeyboardInterrupt.')		print('Quit by KeyboardInterrupt.')
