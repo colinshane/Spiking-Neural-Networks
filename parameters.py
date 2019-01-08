@@ -18,7 +18,7 @@ par = {
 	'cell_type'				: 'adex',	# 'rate' or 'adex'
 	'exc_model'				: 'RS',
 	'inh_model'				: 'cNA',
-	'current_divider'		: 1.5e6,
+	'current_divider'		: 2e6,
 	'input_frequency'		: 30,		# Matches Hz with tuning_height of 4.0 and kappa of 2.0
 
 	# Network configuration
@@ -74,7 +74,7 @@ par = {
 
 	# Training specs
 	'batch_size'            : 256,
-	'n_train_batches'       : 500000,
+	'n_train_batches'       : 50000,
 
 }
 
