@@ -10,19 +10,22 @@ print('\n--> Loading parameters...')
 
 par = {
 	# Setup parameters
-	'save_dir'				: './savedir/',
-	'save_fn'				: 'testing',
+	'savedir'				: './savedir/',
+	'save_fn'				: 'spiking_testing',
 	'training_method'		: 'SL',
 
 	# Cell configuration
-	'cell_type'				: 'adex',	# 'rate' or 'adex'
+	'cell_type'				: 'lif',	# 'rate', 'lif', 'adex'
 	'exc_model'				: 'RS',
 	'inh_model'				: 'cNA',
 	'current_divider'		: 3e8,
 	'input_frequency'		: 30,		# Matches Hz with tuning_height of 4.0 and kappa of 2.0
+	'spiking_target'		: 2,
+	'spiking_cost'			: 1e-3,
+	'entropy_cost'			: 1e-5,
 
 	# Network configuration
-	'use_stp'				: False,
+	'use_stp'				: True,
 	'exc_inh_prop'			: 0.8,		# Literature 0.8, for EI off 1
 
 	# Network shape
@@ -151,50 +154,42 @@ def update_dependencies():
 	"""
 
 	if par['use_stp']:
-		par['alpha_stf']  = np.ones((1, 1, par['n_hidden']), dtype=np.float32)
-		par['alpha_std']  = np.ones((1, 1, par['n_hidden']), dtype=np.float32)
-		par['U']          = np.ones((1, 1, par['n_hidden']), dtype=np.float32)
+		par['alpha_stf']  = np.ones((1, par['n_hidden']), dtype=np.float32)
+		par['alpha_std']  = np.ones((1, par['n_hidden']), dtype=np.float32)
+		par['U']          = np.ones((1, par['n_hidden']), dtype=np.float32)
 
-		par['syn_x_init'] = np.zeros((1, 1, par['n_hidden']), dtype=np.float32)
-		par['syn_u_init'] = np.zeros((1, 1, par['n_hidden']), dtype=np.float32)
+		par['syn_x_init'] = np.zeros((1, par['n_hidden']), dtype=np.float32)
+		par['syn_u_init'] = np.zeros((1, par['n_hidden']), dtype=np.float32)
 
 		for i in range(0,par['n_hidden'],2):
-			par['alpha_stf'][0,0,i] = par['dt']/par['tau_slow']
-			par['alpha_std'][0,0,i] = par['dt']/par['tau_fast']
-			par['U'][0,0,i] = 0.15
-			par['syn_x_init'][0,0,i] = 1
-			par['syn_u_init'][0,0,i] = par['U'][0,0,i+1]
+			par['alpha_stf'][0,i] = par['dt']/par['tau_slow']
+			par['alpha_std'][0,i] = par['dt']/par['tau_fast']
+			par['U'][0,i] = 0.15
+			par['syn_x_init'][0,i] = 1
+			par['syn_u_init'][0,i] = par['U'][0,i+1]
 
-			par['alpha_stf'][0,0,i+1] = par['dt']/par['tau_fast']
-			par['alpha_std'][0,0,i+1] = par['dt']/par['tau_slow']
-			par['U'][0,0,i+1] = 0.45
-			par['syn_x_init'][0,0,i+1] = 1
-			par['syn_u_init'][0,0,i+1] = par['U'][0,0,i+1]
+			par['alpha_stf'][0,i+1] = par['dt']/par['tau_fast']
+			par['alpha_std'][0,i+1] = par['dt']/par['tau_slow']
+			par['U'][0,i+1] = 0.45
+			par['syn_x_init'][0,i+1] = 1
+			par['syn_u_init'][0,i+1] = par['U'][0,i+1]
 
 		par['stp_mod'] = par['dt_sec'] if par['cell_type'] == 'rate' else 1.
-
-		par['alpha_stf'] = np.transpose(par['alpha_stf'])
-		par['alpha_std'] = np.transpose(par['alpha_std'])
-		par['U'] = np.transpose(par['U'])
-		par['syn_x_init'] = np.transpose(par['syn_x_init'])
-		par['syn_u_init'] = np.transpose(par['syn_u_init'])
 
 	### Adaptive-Exponential spiking
 	if par['cell_type'] == 'adex':
 
-		# Note that voltages are in units of mV and currents
-		# are in units of mA.  When pulling from a table based in volts/amps,
-		# multiply E, V_T, D, b, V_r, and Vth by 1000
+		# Note that voltages are in units of V, A, and secs
 		par['cNA'] = {
 			'C'   : 59e-12,     'g'   : 2.9e-9,     'E'   : -62e-3,
 			'V_T' : -42e-3,     'D'   : 3e-3,       'a'   : 1.8e-9,
 			'tau' : 16e-3,      'b'   : 61e-12,     'V_r' : -54e-3,
-			'Vth' : 0e-3,      'dt'  : par['dt']/1000 }
+			'Vth' : 0e-3,       'dt'  : par['dt']/1000 }
 		par['RS']  = {
 			'C'   : 104e-12,    'g'   : 4.3e-9,     'E'   : -65e-3,
 			'V_T' : -52e-3,     'D'   : 0.8e-3,     'a'   : -0.8e-9,
 			'tau' : 88e-3,      'b'   : 65e-12,     'V_r' : -53e-3,
-			'Vth' : 0e-3,      'dt'  : par['dt']/1000 }
+			'Vth' : 0e-3,       'dt'  : par['dt']/1000 }
 
 		par['adex'] = {}
 		for (k0, v_exc), (k1, v_inh) in zip(par[par['exc_model']].items(), par[par['inh_model']].items()):
@@ -206,6 +201,16 @@ def update_dependencies():
 
 		par['w_init'] = par['adex']['b']
 		par['adex']['current_divider'] = par['current_divider']
+
+	elif par['cell_type'] == 'lif':
+
+		par['lif'] = {}
+		par['lif']['Vth'] = 1.
+		par['lif']['V_r'] = 0.
+		par['lif']['membrane_time_constant'] = 20
+		par['lif']['alpha_neuron'] = par['dt']/par['lif']['membrane_time_constant']
+
+		par['w_init'] = 0.
 
 
 update_dependencies()

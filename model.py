@@ -45,6 +45,7 @@ class Model:
 
 		print('Graph defined.\n')
 
+
 	def declare_variables(self):
 		""" Initialize all required variables """
 
@@ -63,7 +64,7 @@ class Model:
 		# Set up initial state
 		self.h_out = [tf.zeros([par['batch_size'],par['n_hidden']])]			# Spike
 		self.h = tf.ones([par['batch_size'],par['n_hidden']])					# State
-		self.h *= 0.1 if par['cell_type'] == 'rate' else par['adex']['V_r']
+		self.h *= 0.1 if par['cell_type'] == 'rate' else par[par['cell_type']]['V_r']
 		self.h = [self.h]
 		adapt = par['w_init']*tf.ones([par['batch_size'],par['n_hidden']])
 
@@ -82,12 +83,20 @@ class Model:
 				raise Exception('Rate cell not yet implemented.')
 			elif par['cell_type'] == 'adex':
 				spike, state, adapt, syn_x, syn_u = self.AdEx_cell(self.h_out[-1], self.h[-1], adapt, self.input_data[t], syn_x, syn_u)
-				y = 0.5*y + 0.5*(spike @ self.var_dict['W_out'] + self.var_dict['b_out'])
+				y = 0.5*y + 0.5*(spike @ self.var_dict['W_out'] + 0.*self.var_dict['b_out'])
 				
 				self.h_out.append(spike)
 				self.h.append(state)
 				self.output.append(y)
 
+			elif par['cell_type'] == 'lif':
+				spike, state, adapt, syn_x, syn_u = self.LIF_cell(self.h_out[-1], self.h[-1], adapt, self.input_data[t], syn_x, syn_u)
+				y = 0.95*y + 0.05*spike @ self.var_dict['W_out'] + 0.*self.var_dict['b_out']
+
+				self.h_out.append(spike)
+				self.h.append(state)
+				self.output.append(y)
+				
 		# Stack records
 		self.output = tf.stack(self.output, axis=0)
 		self.h = tf.stack(self.h, axis=0)
@@ -129,13 +138,41 @@ class Model:
 			def grad(dy): return 0.999*tf.nn.relu(1-tf.abs((V-c['Vth'])/(0.04 + c['Vth'])))
 			return tf.cast(V >= c['Vth'], tf.float32), grad
 
-		spike = do_spike(tf.minimum(c['Vth'], V_next))
+		spike = do_spike(tf.minimum(c['Vth']+1e-9, V_next))
 
 		# Apply spike to membrane and adaptation
 		V_new = spike*c['V_r']        + (1-spike)*V_next
 		w_new = spike*(w_next+c['b']) + (1-spike)*w_next
 
 		return V_new, w_new, spike
+
+
+	def run_lif(self, V, w, I):
+
+		V_next = (1-par['lif']['alpha_neuron'])*V + par['lif']['alpha_neuron']*I
+		w_next = w
+
+		@tf.custom_gradient
+		def do_spike(V):
+			def grad(dy): return dy*0.999*tf.nn.relu(1-tf.abs((V/0.04)))
+			return tf.cast(V >= par['lif']['Vth'], tf.float32), grad
+
+		spike = do_spike(tf.minimum(par['lif']['Vth']+1e-9, V_next))
+		V_new = spike*par['lif']['V_r'] + (1-spike)*V_next
+		w_new = spike*w_next + (1-spike)*w_next
+
+		return V_new, w_next, spike
+
+
+	def LIF_cell(self, spike, V, w, rnn_input, syn_x, syn_u):
+
+		# Apply synaptic plasticity
+		spike_post, syn_x, syn_u = self.synaptic_plasticity(spike, syn_x, syn_u)
+
+		I = rnn_input @ self.var_dict['W_in'] + spike_post @ self.W_rnn_effective + self.var_dict['b_rnn']
+		V, w, spike = self.run_lif(V, w, I)
+
+		return spike, V, w, syn_x, syn_u
 
 
 	def AdEx_cell(self, spike, V, w, rnn_input, syn_x, syn_u):
@@ -155,7 +192,7 @@ class Model:
 		# Set up optimizer
 		adam_optimizer = AdamOpt.AdamOpt(tf.trainable_variables(), learning_rate=par['learning_rate'])
 
-		# Calculate loss
+		# Calculate losses
 		self.task_loss = tf.reduce_mean(self.time_mask * \
 				tf.nn.softmax_cross_entropy_with_logits_v2(logits=self.output, labels=self.target_data))
 
@@ -180,11 +217,11 @@ def main(gpu_id=None):
 
 	# Set up stimulus and recording
 	stim = stimulus.Stimulus()
-	accuracy_curve = []
-	loss_curve = []
+	data_record = {n:[] for n in ['iter', 'acc', 'task_loss', 'spike_loss', 'entropy_loss', 'spiking']}
 
 	# Start TensorFlow session
-	with tf.Session() as sess:
+	gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.8) if gpu_id == '0' else tf.GPUOptions()
+	with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
 
 		# Select CPU or GPU
 		device = '/cpu:0' if gpu_id is None else '/gpu:0'
@@ -205,16 +242,20 @@ def main(gpu_id=None):
 			feed_dict = {x:trial_info['neural_input'], y:trial_info['desired_output'], m:trial_info['train_mask']}
 
 			# Run the model
-			_, task_loss, output, state, spike = sess.run([model.train, model.task_loss, model.output, model.h, model.h_out], feed_dict=feed_dict)
+			_, task_loss, output, state, spike = \
+				sess.run([model.train, model.task_loss, \
+				model.output, model.h, model.h_out], feed_dict=feed_dict)
 
 			# Display network performance
 			if i%20 == 0:
+				spiking = 1000*np.mean(spike)
 				acc = get_perf(trial_info['desired_output'], output, trial_info['train_mask'])
-				print('Iter: {:>6} | Task: {:>6} | Accuracy: {:5.3f} | Task Loss: {:5.3f} | Spike Rate: {:6.2f} Hz'.format(\
-						i, par['task'], acc, task_loss, 1000*np.mean(spike)))
 
-				accuracy_curve.append(acc)
-				loss_curve.append(task_loss)
+				data_record['iter'].append(i)
+				data_record['acc'].append(acc)
+				data_record['task_loss'].append(task_loss)
+				data_record['spiking'].append(spiking)
+
 				trials = 4
 				fig, ax = plt.subplots(5,trials, figsize=[12,8])
 				for b in range(trials):
@@ -235,11 +276,16 @@ def main(gpu_id=None):
 				plt.clf()
 				plt.close()
 
+				pickle.dump(data_record, open(par['savedir'] + par['save_fn'] + '.pkl', 'wb'))
+
+				print('Iter: {:>6} | Accuracy: {:5.3f} | Task Loss: {:5.3f} | Spike Rate: {:6.2f} Hz'.format(\
+						i, acc, task_loss, spiking))
+
 
 
 		if par['save_analysis']:
 			save_results = {'task':task, 'accuracy_curve':accuracy_curve, 'loss_curve':loss_curve, 'par':par}
-			pickle.dump(save_results, open(par['save_dir'] + save_fn + '.pkl', 'wb'))
+			pickle.dump(save_results, open(par['savedir'] + save_fn + '.pkl', 'wb'))
 
 	print('\nModel execution complete.')
 
