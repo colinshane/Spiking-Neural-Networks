@@ -30,10 +30,10 @@ par = {
 
 	# Network shape
 	'num_motion_tuned'		: 64,
-	'num_fix_tuned'			: 4,
+	'num_fix_tuned'			: 0,
 	'num_rule_tuned'		: 0,
 	'num_receptive_fields'	: 1,
-	'n_hidden'				: 200,
+	'n_hidden'				: 400,
 	'n_output'				: 3,
 	'n_val'					: 1,
 	'include_rule_signal'	: True,
@@ -51,27 +51,26 @@ par = {
 	'noise_rnn_sd'          : 0.05,
 
 	# Task specs
-	'task'                  : 'oic',  # See stimulus file for more options
+	'task'                  : 'dms',  # See stimulus file for more options
 	'kappa'                 : 2.0,
     'tuning_height'         : 4.0,
-    'response_multiplier'   : 4.0,
+    'response_multiplier'   : 2.0,
     'num_rules'             : 1,
 
     # Task timings
-    'dead_time'             : 100,
-    'fix_time'              : 200,
+    'dead_time'             : 20,
+    'fix_time'              : 80,
     'sample_time'           : 200,
-    'delay_time'            : 300,
+    'delay_time'            : 500,
     'test_time'             : 200,
-    'mask_time'             : 40,
+    'mask_time'             : 20,
 
 	# Tuning function data
 	'num_motion_dirs'       : 8,
-	'tuning_height'         : 4.0,          # von Mises magnitude scaling factor
 
 	# Synaptic plasticity specs
-	'tau_fast'              : 200,
-	'tau_slow'              : 1500,
+	'tau_fast'              : 100,
+	'tau_slow'              : 1000,
 	'U_stf'                 : 0.15,
 	'U_std'                 : 0.45,
 
@@ -166,7 +165,7 @@ def update_dependencies():
 			par['alpha_std'][0,i] = par['dt']/par['tau_fast']
 			par['U'][0,i] = 0.15
 			par['syn_x_init'][0,i] = 1
-			par['syn_u_init'][0,i] = par['U'][0,i+1]
+			par['syn_u_init'][0,i] = par['U'][0,i]
 
 			par['alpha_stf'][0,i+1] = par['dt']/par['tau_fast']
 			par['alpha_std'][0,i+1] = par['dt']/par['tau_slow']
