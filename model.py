@@ -84,7 +84,12 @@ class Model:
 			if par['cell_type'] == 'rate':
 				raise Exception('Rate cell not yet implemented.')
 			elif par['cell_type'] == 'adex':
-				spike, state, adapt, syn_x, syn_u = self.AdEx_cell(self.h_out[-1], self.h[-1], adapt, self.input_data[t], syn_x, syn_u)
+				if t < 10:
+					spike, state, adapt, syn_x, syn_u = self.AdEx_cell(tf.zeros_like(self.h_out[-1]), self.h[-1], \
+						adapt, self.input_data[t], syn_x, syn_u)
+				else:
+					spike, state, adapt, syn_x, syn_u = self.AdEx_cell(self.h_out[-10], self.h[-1], \
+						adapt, self.input_data[t], syn_x, syn_u)
 				y = 0.95*y + 0.05*(spike @ self.var_dict['W_out'] + self.var_dict['b_out'])
 
 				self.h_out.append(spike)
@@ -209,10 +214,11 @@ class Model:
 		adam_optimizer = AdamOpt.AdamOpt(tf.trainable_variables(), learning_rate=par['learning_rate'])
 
 		# Calculate losses
-		self.task_loss = tf.reduce_mean(self.time_mask * \
-				tf.nn.softmax_cross_entropy_with_logits_v2(logits=self.output, labels=self.target_data))
+		self.task_loss = tf.reduce_mean(self.time_mask[::1,...] * \
+				tf.nn.softmax_cross_entropy_with_logits_v2(logits=self.output[::1,...], \
+				labels=self.target_data[::1,...]))
 
-		self.spike_loss = 0.*tf.reduce_mean(tf.nn.relu(self.h_out))
+		self.spike_loss = 0.*tf.reduce_mean(tf.nn.relu(self.h + 0.02))
 
 		# Compute gradients
 		self.train = adam_optimizer.compute_gradients(self.task_loss + self.spike_loss)
@@ -266,6 +272,7 @@ def main(gpu_id=None):
 
 			# Display network performance
 			if i%20 == 0:
+			if i%25 == 0:
 				spiking = 1000*np.mean(spike)
 				acc = get_perf(trial_info['desired_output'], output, trial_info['train_mask'])
 
@@ -273,6 +280,23 @@ def main(gpu_id=None):
 				data_record['acc'].append(acc)
 				data_record['task_loss'].append(task_loss)
 				data_record['spiking'].append(spiking)
+
+
+				trials = 4
+				if i%600==-1 and i>0:
+					for k in range(200):
+						fig, ax = plt.subplots(5,trials, figsize=[12,8])
+						for b in range(trials):
+							ax[0,b].plot(state[:,b,k])
+							ax[1,b].plot(spike[:,b,k])
+							ax[2,b].plot(syn_x[:,b,k])
+							ax[3,b].plot(syn_u[:,b,k])
+							ax[4,b].plot(syn_x[:,b,k]*syn_u[:,b,k])
+						plt.savefig('./savedir/mt128_neuron{}_outputs.png'.format(k))
+						plt.clf()
+						plt.close()
+
+
 
 				trials = 4
 				fig, ax = plt.subplots(6,trials, figsize=[12,8])
@@ -282,14 +306,14 @@ def main(gpu_id=None):
 					ax[2,b].imshow(output[:,b,:].T, aspect='auto')
 					ax[3,b].imshow(state[:,b,:].T, aspect='auto')
 					ax[4,b].imshow(spike[:,b,:].T, aspect='auto')
-					ax[5,b].imshow((syn_x[:,b,:]*syn_y[:,b,:]).T, aspect='auto')
+					ax[5,b].imshow((syn_u[:,b,:]*syn_x[:,b,:]).T, aspect='auto')
 
 				ax[0,0].set_ylabel('Network input')
 				ax[1,0].set_ylabel('Expected Output')
 				ax[2,0].set_ylabel('Network Output')
 				ax[3,0].set_ylabel('Membrane Voltage')
 				ax[4,0].set_ylabel('Spike Output')
-				ax[4,0].set_ylabel('Synaptic Eff.')
+				ax[5,0].set_ylabel('Synaptic Eff.')
 				ax[4,0].set_xlabel('Time')
 
 				plt.savefig('./savedir/iter{}_outputs.png'.format(i))
