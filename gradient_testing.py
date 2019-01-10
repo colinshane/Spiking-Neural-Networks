@@ -16,8 +16,8 @@ os.environ['TF_CPP_MIN_LOG_LEVEL']='2'
 
 np.set_printoptions(linewidth=np.inf)
 
-Vth = 20.
-region = np.linspace(-60, 50, num=10000).astype(np.float32)
+Vth = 0.
+region = np.linspace(-0.1, 0.1, num=10000).astype(np.float32)
 
 @tf.custom_gradient
 def custom_function(x):
@@ -31,7 +31,7 @@ def custom_function(x):
 def spike_function(V):
 
 	def grad(dy):
-		return dy * tf.nn.relu(1-tf.abs((V-Vth)/Vth))
+		return -dy*0.3*tf.nn.relu(1-tf.abs(V/0.06))
 
 	return tf.cast(V > Vth, tf.float32), grad
 
@@ -63,7 +63,7 @@ with tf.Session() as sess:
 	plt.plot(region, z, label='Spike Output')
 	plt.plot(region, g2[0], label='Spike Gradient')
 	plt.axvline(Vth, ls='--', c='k', label='Threshold')
-	plt.axvline(-50, ls=':', c='k', label='Reset Voltage')
+	plt.axvline(-0.05, ls=':', c='k', label='Reset Voltage')
 
 	plt.xlabel('Membrane Voltage (mV)')
 	plt.ylabel('Spike | Gradient')

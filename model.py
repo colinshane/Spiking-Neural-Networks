@@ -8,6 +8,7 @@ import AdamOpt
 # Required packages
 import tensorflow as tf
 import numpy as np
+from collections import deque
 import pickle
 import os, sys, time
 
@@ -74,11 +75,20 @@ class Model:
 		# Apply the EI mask to the recurrent weights
 		self.W_rnn_effective = par['EI_matrix'] @ tf.nn.relu(self.var_dict['W_rnn'])
 
+		# Set up latency buffer if being used
+		if par['use_latency']:
+			self.state_buffer = [tf.zeros([par['batch_size'], par['n_hidden']]) for t in range(par['latency_max'])]
+			self.state_buffer = deque(self.state_buffer)
+			self.W_rnn_latency = self.W_rnn_effective[tf.newaxis,...] * par['latency_mask']
+			self.lat_spike_shape = tf.ones([par['latency_max'], 1, 1])
+
 		# Set up output record
 		self.output = []
 
 		y = 0.
 		for t in range(par['num_time_steps']):
+			self.t = t 		# For latency calculations
+
 			if par['cell_type'] == 'rate':
 				raise Exception('Rate cell not yet implemented.')
 			elif par['cell_type'] == 'adex':
@@ -115,6 +125,23 @@ class Model:
 			h_post = h
 
 		return h_post, syn_x, syn_u
+
+
+	def rnn_matmul(self, spike_in):
+
+		if par['use_latency']:
+			spike_in = self.lat_spike_shape * spike_in[tf.newaxis,...]
+			state_update = tf.unstack(spike_in @ self.W_rnn_latency, axis=0)
+
+			self.state_buffer.rotate(-1)
+			self.state_buffer[-1] = tf.zeros_like(self.state_buffer[-1])
+			for i, s in enumerate(state_update):
+				self.state_buffer[i] += s
+
+			return self.state_buffer[0]
+
+		else:
+			return spike_in @ self.W_rnn_effective
 
 
 	def run_adex(self, V, w, I):
@@ -169,7 +196,7 @@ class Model:
 		# Apply synaptic plasticity
 		spike_post, syn_x, syn_u = self.synaptic_plasticity(spike, syn_x, syn_u)
 
-		I = rnn_input @ self.var_dict['W_in'] + spike_post @ self.W_rnn_effective + 0*self.var_dict['b_rnn']
+		I = rnn_input @ self.var_dict['W_in'] + self.rnn_matmul(spike_post) + 0*self.var_dict['b_rnn']
 		V, w, spike = self.run_lif(V, w, I)
 
 		return spike, V, w, syn_x, syn_u
@@ -180,7 +207,7 @@ class Model:
 		# Apply synaptic plasticity
 		spike_post, syn_x, syn_u = self.synaptic_plasticity(spike, syn_x, syn_u)
 
-		I = rnn_input @ self.var_dict['W_in'] + spike_post @ self.W_rnn_effective + self.var_dict['b_rnn']
+		I = rnn_input @ self.var_dict['W_in'] + self.rnn_matmul(spike_post) + self.var_dict['b_rnn']
 		V, w, spike = self.run_adex(V, w, I)
 
 		return spike, V, w, syn_x, syn_u
@@ -248,7 +275,7 @@ def main(gpu_id=None):
 
 			# Display network performance
 			if i%20 == 0:
-				spiking = 1000*np.mean(spike)
+				spiking = (par['num_time_steps']/par['dt'])*np.mean(spike)
 				acc = get_perf(trial_info['desired_output'], output, trial_info['train_mask'])
 
 				data_record['iter'].append(i)

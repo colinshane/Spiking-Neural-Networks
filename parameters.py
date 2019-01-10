@@ -1,6 +1,7 @@
 ### Authors: Nicolas Y. Masse, Gregory D. Grant
 
 import numpy as np
+from itertools import product
 
 print('\n--> Loading parameters...')
 
@@ -20,9 +21,11 @@ par = {
 	'inh_model'				: 'cNA',
 	'current_divider'		: 3e8,
 	'input_frequency'		: 30,		# Matches Hz with tuning_height of 4.0 and kappa of 2.0
-	'spiking_target'		: 2,
-	'spiking_cost'			: 1e-3,
-	'entropy_cost'			: 1e-5,
+
+	# Latency configuration
+	'use_latency'			: False,
+	'latency_ms_min'		: 10,
+	'latency_ms_max'		: 50,
 
 	# Network configuration
 	'use_stp'				: True,
@@ -211,6 +214,21 @@ def update_dependencies():
 		par['lif']['alpha_neuron'] = par['dt']/par['lif']['membrane_time_constant']
 
 		par['w_init'] = 0.
+
+
+	if par['use_latency']:
+
+		latency_min = par['latency_ms_min']//par['dt']
+		latency_max = par['latency_ms_max']//par['dt']
+		par['latency_max'] = latency_max
+
+		latency_matrix = np.random.randint(latency_min, latency_max, size=[par['n_hidden'], par['n_hidden']]).astype(np.int32)
+		par['latency_mask'] = np.zeros([latency_max, par['n_hidden'], par['n_hidden']]).astype(np.float32)
+		for i, j in product(range(par['n_hidden']), range(par['n_hidden'])):
+			par['latency_mask'][latency_matrix[i,j],i,j] = 1.
+
+		par['state_buffer_shape'] = [latency_max, par['batch_size'], par['n_hidden']]
+
 
 
 update_dependencies()
